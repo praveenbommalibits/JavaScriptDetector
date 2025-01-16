@@ -1,0 +1,106 @@
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import com.itextpdf.text.Document;
+import com.itextpdf.text.pdf.PdfWriter;
+import com.itextpdf.tool.xml.XMLWorkerHelper;
+import org.json.JSONObject;
+
+import java.io.*;
+import java.util.HashMap;
+import java.util.Map;
+
+public class WordToPdfProcessor {
+    public static void main(String[] args) throws Exception {
+        // Input JSON
+        String jsonString = """
+                {
+                    "name": "John Doe",
+                    "age": "30",
+                    "city": "New York",
+                    "position": "Software Engineer"
+                }
+                """;
+
+        // Mapping JSON keys to Word placeholders
+        Map<String, String> fieldMapping = new HashMap<>();
+        fieldMapping.put("name", "${employeeName}");
+        fieldMapping.put("age", "${employeeAge}");
+        fieldMapping.put("city", "${employeeCity}");
+        fieldMapping.put("position", "${employeePosition}");
+
+        // File paths
+        String templatePath = "template.dotx";
+        String outputWordPath = "output.docx";
+        String outputPdfPath = "output.pdf";
+
+        // Generate Word document and convert to PDF
+        generateWordFromTemplate(templatePath, outputWordPath, new JSONObject(jsonString), fieldMapping);
+        convertWordToPdf(outputWordPath, outputPdfPath);
+
+        System.out.println("Process completed. Output files generated.");
+    }
+
+    /**
+     * Generates a Word document by replacing placeholders with JSON values.
+     */
+    private static void generateWordFromTemplate(String templatePath, String outputPath, JSONObject jsonData, Map<String, String> fieldMapping) throws Exception {
+        // Load the Word template
+        FileInputStream fis = new FileInputStream(templatePath);
+        XWPFDocument document = new XWPFDocument(fis);
+
+        // Replace placeholders in paragraphs
+        for (XWPFParagraph paragraph : document.getParagraphs()) {
+            String paragraphText = paragraph.getText();
+            for (Map.Entry<String, String> entry : fieldMapping.entrySet()) {
+                String jsonKey = entry.getKey();
+                String placeholder = entry.getValue();
+                if (paragraphText.contains(placeholder)) {
+                    paragraphText = paragraphText.replace(placeholder, jsonData.optString(jsonKey, ""));
+                }
+            }
+            replaceParagraphText(paragraph, paragraphText);
+        }
+
+        // Save the updated Word document
+        FileOutputStream fos = new FileOutputStream(outputPath);
+        document.write(fos);
+        fos.close();
+        document.close();
+        fis.close();
+
+        System.out.println("Generated Word document: " + outputPath);
+    }
+
+    /**
+     * Replaces the text in a paragraph while preserving its styling.
+     */
+    private static void replaceParagraphText(XWPFParagraph paragraph, String newText) {
+        // Remove all existing runs
+        while (paragraph.getRuns().size() > 0) {
+            paragraph.removeRun(0);
+        }
+
+        // Add a single run with the new text
+        paragraph.createRun().setText(newText);
+    }
+
+    /**
+     * Converts a Word document to a PDF using iText.
+     */
+    private static void convertWordToPdf(String wordFilePath, String pdfFilePath) throws Exception {
+        // Read Word file
+        XWPFDocument document = new XWPFDocument(new FileInputStream(wordFilePath));
+        StringWriter stringWriter = new StringWriter();
+        XHTMLConverter xhtmlConverter = XHTMLConverter.getInstance();
+        xhtmlConverter.convert(document, stringWriter, null);
+
+        // Convert HTML to PDF
+        Document pdfDocument = new Document();
+        PdfWriter writer = PdfWriter.getInstance(pdfDocument, new FileOutputStream(pdfFilePath));
+        pdfDocument.open();
+        XMLWorkerHelper.getInstance().parseXHtml(writer, pdfDocument, new StringReader(stringWriter.toString()));
+        pdfDocument.close();
+
+        System.out.println("Generated PDF: " + pdfFilePath);
+    }
+}
